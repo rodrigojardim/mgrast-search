@@ -9,8 +9,8 @@
 		Output: <STDOUT> csv file
 
 	Use:
-		python3 search_mgrast.py 1>output.csv 2>errors.csv &
-		tail -f errors.csv
+		python3 search_mgrast.py 1>output.csv 2>log &
+		tail -f log
 
     Rodrigo Jardim
 
