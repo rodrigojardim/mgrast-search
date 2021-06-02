@@ -1,0 +1,326 @@
+#####
+# Analises estatisticas para o artigo do MG-RAST
+#
+# Autor: Rodrigo Jardim
+# Data: Jul 2020
+#####
+
+# Bibliotecas utilizadas
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(data.table)
+library(factoextra)
+
+
+oldpwd <- getwd()
+
+# Configurando o diretorio de trabalho
+setwd("~/Projects/Colaboracao/FOP/Simone/Artigos/mg-rast/Analises/mgrast-search/data")
+
+# Carregando os dados sem Taxonomia
+dados_brutos <- read.csv("output.csv", sep=";", header = TRUE)
+
+# Verificando coluna numerica com valor NA
+dados_brutos[is.na(dados_brutos$QC_failed)]
+dados_brutos[is.na(dados_brutos$QC_unknow)]
+dados_brutos[is.na(dados_brutos$QC_predicted)]
+dados_brutos[is.na(dados_brutos$RAREFACTION)]
+dados_brutos[is.na(dados_brutos$ALPHA)]
+
+# Zerando colunas numericas com NA
+dados_brutos <- replace(x = dados_brutos, list = is.na(dados_brutos), values = 0)
+
+# Total de metagenomas
+count(dados_brutos)
+
+# Total por tipo de Sequenciamento
+dados_brutos %>% count(`SEQUENCE_type`)
+
+# Filtrando por Amplicon e WGS
+dados_brutos <- dados_brutos %>%
+    filter(SEQUENCE_type %in% c("Amplicon", "WGS"))
+
+# Total por tipo de Sequenciamento
+dados_brutos %>% count(`SEQUENCE_type`)
+
+# Quantidade de projetos
+dados_brutos %>% count(Project_ID)
+
+
+# Total por tipo de sequenciamento / projetos
+dados_brutos %>% 
+    group_by(Project_ID) %>% 
+    count(SEQUENCE_type)
+
+# Retira projetos com menos de 3 metagenomas
+dados_brutos <- dados_brutos %>%
+    group_by(Project_ID) %>%
+    filter(n() > 3)
+
+# Total por tipo de sequenciamento / projetos
+dados_brutos %>% 
+    group_by(Project_ID) %>% 
+    count(SEQUENCE_type)
+
+# Total por tipo de Sequenciamento
+dados_brutos %>%
+    group_by(SEQUENCE_type) %>%
+    count(`SEQUENCE_type`)
+
+## Filtra so os projetos nos dois tipos de sequenciamento
+dados_brutos <- dados_brutos %>%
+    filter(Project_ID %in% c("mgp3474", "mgp4843", "mgp7236"))
+
+# Total por tipo de Sequenciamento
+dados_brutos %>%
+    group_by(SEQUENCE_type) %>%
+    count(`SEQUENCE_type`)
+
+# Total por tipo de sequenciamento / projetos
+dados_brutos %>% 
+    group_by(Project_ID) %>% 
+    count(SEQUENCE_type)
+
+### Análises descritivas
+
+# Boxplot das variáveis
+# Funcao para ggplot
+# Funcao para calcular normalidade por Shapiro. Pode ser usada com summarize
+desenha_boxplot = function (df, xvar, yvar, mainTitle, xtitle, ytitle) {
+    box_plot <- df %>%
+        #filter(SEQUENCE_type == seq_type) %>% 
+        ggplot(aes(x = xvar, y = yvar, color = xvar))
+    # Add the geometric object box plot
+    box_plot + 
+        geom_boxplot(outlier.colour = "red",
+                     outlier.shape = 2,
+                     outlier.size = 3) +
+        geom_dotplot(binaxis = 'y',
+                     dotsize = 0.25,
+                     stackdir = 'center') +
+        theme_classic() +
+        theme(legend.position = "none")+
+        ggtitle(mainTitle)+
+        xlab(xtitle)+
+        ylab(ytitle) +
+        theme(plot.title = element_text(hjust = 0.5))
+}
+
+df <- dados_brutos %>%
+    filter(SEQUENCE_type == 'Amplicon')
+#    filter(SEQUENCE_type == 'WGS')
+desenha_boxplot(df, xvar = df$SEQUENCE_type, 
+                yvar = df$QC_failed, mainTitle = "",
+                ytitle = "QC Failed", xtitle = "MG-Rast Projects ID")
+desenha_boxplot(df, xvar = df$SEQUENCE_type, 
+                yvar = df$QC_unknow, mainTitle = "",
+                ytitle = "QC Unknown", xtitle = "MG-Rast Projects ID")
+desenha_boxplot(df, xvar = df$SEQUENCE_type, 
+                yvar = df$QC_predicted, mainTitle = "",
+                ytitle = "QC Predicted", xtitle = "MG-Rast Projects ID")
+desenha_boxplot(df, xvar = df$SEQUENCE_type, 
+                yvar = df$ALPHA, mainTitle = "",
+                ytitle = "ALPHA", xtitle = "MG-Rast Projects ID")
+desenha_boxplot(df, xvar = df$SEQUENCE_type, 
+                yvar = df$RAREFACTION, mainTitle = "",
+                ytitle = "RAREFACTION", xtitle = "MG-Rast Projects ID")
+
+# Histograma com linhas comparativas
+histogram=function(x, title, xlab){
+    hist(x,prob=T, main = title, xlab=xlab)
+    lines(density(x),col="red")
+    curve(dnorm(x,mean(x), sd(x)),add=T,col="blue")
+}
+histogram(df$QC_failed, '', '')
+shapiro.test(df$QC_failed)
+
+histogram(df$QC_unknow, '', '')
+shapiro.test(df$QC_unknow)
+
+histogram(df$QC_predicted, '', '')
+shapiro.test(df$QC_predicted)
+
+histogram(df$ALPHA, '', '')
+shapiro.test(df$ALPHA)
+
+histogram(df$RAREFACTION, '', '')
+shapiro.test(df$RAREFACTION)
+
+
+### Diferença estatística entre as amostras
+## Dados nao normais, Mann Whitney
+## Se o valor de p < 0.05, sao diferentes estatisticamente significante
+wilcox.test(QC_failed ~ SEQUENCE_type, data=dados_brutos, exact = FALSE)
+wilcox.test(QC_unknow ~ SEQUENCE_type, data=dados_brutos, exact = FALSE)
+wilcox.test(QC_predicted ~ SEQUENCE_type, data=dados_brutos, exact = FALSE)
+wilcox.test(ALPHA ~ SEQUENCE_type, data=dados_brutos, exact = FALSE)
+wilcox.test(RAREFACTION ~ SEQUENCE_type, data=dados_brutos, exact = FALSE)
+
+
+## Correlação entre todas as variáveis
+df <- subset(dados_brutos, select = c(`QC_failed`, `QC_unknow`, 
+                                      `QC_predicted`, `ALPHA`, 
+                                      `RAREFACTION`, `SEQUENCE_type`))
+
+df <- dados_brutos %>%
+    group_by(Project_ID) %>%
+    select(`QC_failed`, `QC_unknow`, `QC_predicted`, `ALPHA`, 
+           `RAREFACTION`, `SEQUENCE_type`) %>%
+    filter(SEQUENCE_type == 'Amplicon')
+
+df <- subset(df, select = c(-1, -7))
+cor.df <- cor(df)
+cor.df <- replace(x = cor.df, list = is.na(cor.df), values = 0)
+pairs(cor.df, diag.panel = panel.hist, upper.panel = panel.cor)
+cormat <- round(cor(df),2)
+cormat <- replace(x = cormat, list = is.na(cormat), values = 0)
+
+# Get lower triangle of the correlation matrix
+get_lower_tri<-function(cormat){
+    cormat[upper.tri(cormat)] <- NA
+    return(cormat)
+}
+# Get upper triangle of the correlation matrix
+get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+}
+
+reorder_cormat <- function(cormat){
+    # Use correlation between variables as distance
+    dd <- as.dist((1-cormat)/2)
+    hc <- hclust(dd)
+    cormat <-cormat[hc$order, hc$order]
+}
+# Reorder the correlation matrix
+cormat <- reorder_cormat(cormat)
+upper_tri <- get_upper_tri(cormat)
+# Melt the correlation matrix
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+
+# Create a ggheatmap
+ggheatmap <- ggplot(melted_cormat, aes(Var1, ordered(Var2, levels = rev(sort(unique(Var2)))), fill = value))+
+    geom_tile(aes(fill = value)) +
+    geom_tile(color = "white")+
+    scale_fill_gradient2(low = "darkblue", high = "red", mid = "white", 
+                         midpoint = 0, limit = c(-1,1), space = "Lab", 
+                         name="Pearson\nCorrelation") +
+    theme_minimal()+ # minimal theme
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, 
+                                     size = 12, hjust = 1))+
+    coord_fixed()
+# Print the heatmap
+print(ggheatmap)
+
+ggheatmap + 
+    geom_text(aes(Var1, Var2, label = value), color = "black", size = 4) +
+    theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.ticks = element_blank(),
+        legend.justification = c(1, 0),
+        legend.position = c(1.2, 0.4),
+        legend.direction = "vertical")+
+    guides(fill = guide_colorbar(barwidth = 0.5, barheight = 5,
+                                 title.position = "top", title.hjust = 0.5))
+
+############################################################
+
+### Análise de Componentes Principais
+# Diretorio de trabalho (trocar entre WGS e Amplicon)
+#setwd("~/Projects/Simone/IC_2019/MG-RAST/Analises/Arquivos_Taxonomia/WGS_160420")
+
+# Lista de arquivos
+files = list.files(pattern="^mgm.*.csv")
+
+# Criando uma lista de Dataframes
+metagenomes <- lapply(files, fread)
+
+# Criando objeto DataFrame com todos os arquivos
+combined_files <- bind_rows(lapply(files, fread))
+
+### Retirando metagenomas de outros projetos
+### soh os projetos mgp3474, mgp4843 e mgp7236
+mgp3474 <- dados_brutos %>%
+    filter(Project_ID == 'mgp3474') %>%
+    filter(SEQUENCE_type == 'WGS')
+mgp4843 <- dados_brutos %>%
+    filter(Project_ID == 'mgp4843') %>%
+    filter(SEQUENCE_type == 'WGS')
+mgp7236 <- dados_brutos %>%
+    filter(Project_ID == 'mgp7236') %>%
+    filter(SEQUENCE_type == 'WGS')
+
+## Funções auxiliares
+colMax <- function(data) sapply(data, max, na.rm = TRUE)
+colSort <- function(data, ...) sapply(data, sort, ...)
+
+
+# Reduz o número de variáveis (organismos) para permitir o PCA
+# O PCA precisa ter mais observações do que variáveis
+# Escolha a quantidade de retorno [1:200] por exemplo retorna os 200 primeiros
+top <- as.data.frame(colSort(metagenomes[[1]])[1:20])
+for(i in 2:length(metagenomes)) {
+    y <- as.data.frame(colSort(metagenomes[[i]])[1:20])
+    top <- bind_rows(top,y)
+}
+taxa_7236 <- top %>%
+    filter(mgrastID %in% mgp7236_amplicon$MG.RAST_ID)
+core_7236 <- subset(taxa_7236, select=colMeans(is.na(top)) == 0)
+
+combined_files <- top
+
+taxa_3474 <- combined_files %>%
+    filter(mgrastID %in% mgp3474$MG.RAST_ID)
+taxa_4843 <- combined_files %>%
+    filter(mgrastID %in% mgp4843$MG.RAST_ID)
+taxa_7236 <- combined_files %>%
+    filter(mgrastID %in% mgp7236$MG.RAST_ID)
+taxa_all <- bind_rows(taxa_3474,taxa_4843,taxa_7236)
+
+# Excluindo colunas com algum NA
+core_3474 <- subset(taxa_3474, select=colMeans(is.na(combined_files)) == 0)
+core_4843 <- subset(taxa_4843, select=colMeans(is.na(combined_files)) == 0)
+core_7236 <- subset(taxa_7236, select=colMeans(is.na(combined_files)) == 0)
+core_all <- subset(taxa_all, select=colMeans(is.na(combined_files)) == 0)
+
+
+core.active <- core_all[,-1]
+
+# Excluindo unclassified (derived from Bacteria)
+core.active <- core.active %>% 
+    select(-starts_with("Unclass"))
+    
+res.pca <- princomp(core.active)
+summary(res.pca)
+loadings(res.pca)
+fviz_eig(res.pca)
+fviz_pca_ind(res.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+)
+
+fviz_pca_var(res.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+)
+
+
+View(colMax(core.active))
+View(colSort(core.active, decreasing = TRUE))
+
+sort_metagenomas <- function(meta, sorted) {
+    temp <- sort(meta, decreasing = TRUE)
+    temp <- temp[1:10]
+    bind_rows(sorted,temp)
+}
+
+
+setwd(oldpwd)
+
